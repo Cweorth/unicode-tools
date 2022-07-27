@@ -1,0 +1,767 @@
+#!/usr/bin/env perl
+
+use v5.30;
+
+use utf8;
+use warnings;
+
+use experimental qw(signatures);
+
+=encoding utf-8
+
+=head1 NAME
+
+C<unicode> — identify Unicode characters or print other useful info
+
+=head1 SYNOPSIS
+
+    unicode [COMMON OPTIONS] COMMAND [OPTIONS] [ARGUMENTS…]
+
+Common options:
+
+    -h                  Show synopsis and exit.
+       --help           Show extended help and exit.
+
+    -p --pager=[PAGER]  Use ‹PAGER› program to display output.
+                        If ‹PAGER› is not provided, use ‹$PAGER› from environment.
+    -P --no-pager       Do not use program to display output.
+       --no-less
+
+Commands and their options
+
+    identify [--file|--argv] [--ws] [--csv=[SEP]] [@FILE|STRING]…
+    encode [--file|argv] [--ws] [--as=ENCODING] [@FILE|STRING]…
+    categories [KEY…]
+    charblocks|charscripts [--list]
+    charblocks|charscripts [--file|--argv] [--ws] (@FILE|STRING)…
+    charblocks|charscripts (--get|--search) BLOCK…
+    charblocks|charscripts --list-chars [--table] BLOCK…
+
+=head1 DESCRIPTION
+
+Depending on the command, the script provides information from Unicode
+database.
+
+=head2 C<help>
+
+Equivalent to C<--help>.
+
+=head2 C<identify>
+
+    identify [OPTIONS] [@FILE|STRING]…
+
+Aliases: C<ident>, C<id>.
+
+Identify characters provided read from a C<@FILE> or from a C<STRING>.
+
+    -F --file[s]        Interpret all arguments as files to read from.
+    -A --argv           Interpret all arguments as literal strings.
+       --ws             Display information about whitespaces as well.
+       --csv=[SEP]      Display information as values separated by ‹SEP›.
+                        Uses ‹;› by default.
+
+=head2 C<encode>
+
+    encode [OPTIONS] [@FILE|STRING]…
+
+Aliases: C<enc>.
+
+Display encoding of characters from provided C<@FILE> or C<STRING>.
+
+Options C<--file>, C<--files>, C<--argv> and C<--ws> are the same as for
+C<identify> command. In addition, C<encode> supports the following options:
+
+    -E --as=ENCODING    Use given ‹ENCODING› instead of (default) UTF-8.
+                        You may list available encodings with ‹iconv --list›.
+
+=head2 C<categories>
+
+    categories [KEY…]
+
+Aliases: C<cat>, C<category>.
+
+Display list of categories with their names. If arguments are provided,
+only categories matching given keys are displayed.
+
+=head2 C<charblocks>
+
+    charblocks [OPTIONS] [ARGS…]
+
+Aliases: C<blocks>, C<charblock>, C<block>.
+
+Displays various information about character blocks. The behaviour depends
+on provided options and arguments:
+
+=over
+
+=item C<charblocks [--list|-l]>
+
+Lists all character blocks and their ranges.
+
+=item C<charblocks [--file|--argv] [--ws] (@FILE|STRING)…>
+
+Displays character blocks from given sources.
+See C<identify> command for documentation of C<--file>, C<--argv> and C<--ws>.
+
+=item C<charblocks (--get|-g) BLOCK…>
+
+As C<--list>, except prints only blocks named C<BLOCK>.
+
+=item C<charblocks (--search|-s) PATTERN…>
+
+As C<--list>, except prints only blocks matching at least one C<PATTERN>.
+
+=item C<charblocks (--list-chars|-x) [--table|-t] BLOCK…>
+
+Lists characters of the given B<BLOCK>s. The format is same as for C<identify>
+command, unless C<--table> is also given, in which case a table output of
+characters is printed.
+
+=back
+
+=head2 C<charscripts>
+
+    charscripts [OPTIONS] [ARGS…]
+
+Aliases: C<scripts>, C<charscript>, C<script>.
+
+This command has the same options and semantics as C<charblocks>, except it
+works with character scripts instead of character blocks.
+
+The difference is explained e.g. here:
+L<Unicode::UCD|https://perldoc.perl.org/Unicode::UCD#Blocks-versus-Scripts>.
+
+=cut
+
+#------------------------------------------------------------------------------
+package CharSource;
+#------------------------------------------------------------------------------
+
+# This is an “abstract” class for character sources.
+
+sub new($class, $options, @) {
+    return bless {
+        _opt => $options,
+    }, $class;
+}
+
+sub next($self) {
+    ...;
+}
+
+#------------------------------------------------------------------------------
+package CharSource::Empty;
+#------------------------------------------------------------------------------
+
+# Empty character source.
+
+use parent -norequire, qw(CharSource);
+
+sub next($self) {
+    # Nop, this will return empty list to the caller.
+}
+
+#------------------------------------------------------------------------------
+package CharSource::String;
+#------------------------------------------------------------------------------
+
+# Character source that provides characters from a string literal.
+
+use Encode;
+
+use parent -norequire, qw(CharSource);
+
+sub new($class, $options, $string) {
+    my $self = $class->SUPER::new($options);
+
+    $self->{_str} = [ split //, $string ];
+
+    return $self;
+}
+
+sub next($self) {
+    if (!$self->{_opt}->{whitespaces}) {
+        while ($self->{_str}->@* > 0 && $self->{_str}->[0] =~ /\s/) {
+            shift $self->{_str}->@*;
+        }
+    }
+
+    return if $self->{_str}->@* == 0;
+    return shift $self->{_str}->@*;
+}
+
+#------------------------------------------------------------------------------
+package CharSource::File;
+#------------------------------------------------------------------------------
+
+# Character source that provides characters from a file.
+
+use parent -norequire, qw(CharSource);
+
+sub new($class, $options, $filename) {
+    my $self = $class->SUPER::new($options);
+
+    open $self->{_fh}, '<:encoding(utf-8)', $filename
+        or die "$filename: $!\n";
+
+    return $self;
+}
+
+sub next($self) {
+    if ($self->{_cur} && defined(my $chr = $self->{_cur}->next)) {
+        return $chr;
+    }
+
+    my $line = readline $self->{_fh};
+    return if !defined $line;
+
+    $self->{_cur} = CharSource::String->new($self->{_opt}, $line);
+
+    return $self->next;
+}
+
+#------------------------------------------------------------------------------
+package CharSource::File::Armour;
+#------------------------------------------------------------------------------
+
+use parent -norequire, qw(CharSource::File);
+
+# Same as ‹CharSource::File›, except protect against exception. It will
+# behave like ‹CharSource::Empty› in that case.
+
+sub new($class, $options, $filename) {
+    my $self = eval {
+        $class->SUPER::new($options, $filename);
+    };
+
+    return $self
+        if !$@;
+
+    chomp $@;
+    say STDERR "$@";
+    return CharSource::Empty->new($options);
+}
+
+#------------------------------------------------------------------------------
+package CharSource::Dispatcher;
+#------------------------------------------------------------------------------
+
+# Class that dispatches String or File sources on provided arguments.
+
+use Encode;
+
+use parent -norequire, qw(CharSource);
+
+sub new($class, $options, $argv) {
+    my $self = $class->SUPER::new($options);
+
+    $self->{_argv} = [ $argv->@* ];
+
+    return $self;
+}
+
+sub _get_source($self, $arg) {
+    if ((!$self->{_opt}->{files} && !$self->{_opt}->{argv} && $arg =~ s/^@//)
+            || $self->{_opt}->{files}) {
+        return CharSource::File::Armour->new($self->{_opt}, $arg);
+    }
+
+    return CharSource::String->new($self->{_opt}, Encode::decode('utf-8', $arg));
+}
+
+sub next($self) {
+    if ($self->{_cur} && defined(my $chr = $self->{_cur}->next)) {
+        return $chr;
+    }
+
+    my $arg = shift $self->{_argv}->@*;
+    return if !defined $arg;
+
+    $self->{_cur} = $self->_get_source($arg);
+    return $self->next;
+}
+
+#------------------------------------------------------------------------------
+package Pager;
+#------------------------------------------------------------------------------
+
+sub _exec_child($pager, $pipe_in, $pipe_out) {
+    close $pipe_out;
+
+    open STDIN, "<&", $pipe_in
+        or die "pager: Cannot dup() standard input: $!\n";
+
+    exec $pager
+        or exit 1;
+}
+
+sub _exec_parent($pipe_in, $pipe_out) {
+    close $pipe_in;
+    open STDOUT, ">&", $pipe_out
+        or die "pager: Cannot dup() to standard output:: $!\n";
+}
+
+sub _exec($pager) {
+    my ($pipe_in, $pipe_out);
+    die "pager: Cannot create pipe: $!\n"
+        if !pipe $pipe_in, $pipe_out;
+
+    my $pid = fork;
+    die "pager: Cannot fork: $!\n"
+        if !defined $pid;
+
+    _exec_child($pager, $pipe_in, $pipe_out) if $pid == 0;
+    _exec_parent($pipe_in, $pipe_out);
+    return $pid;
+}
+
+sub new($class, $pager) {
+    return bless {
+        _pid => Pager::_exec($pager),
+    }, $class;
+}
+
+sub DESTROY($self) {
+    return if !defined $self->{_pid};
+
+    close STDOUT;
+    waitpid delete $self->{_pid}, 0;
+}
+
+#------------------------------------------------------------------------------
+package main;
+#------------------------------------------------------------------------------
+
+use Data::Dumper;
+
+use Getopt::Long qw(:config posix_default);
+use List::Util qw(max);
+use Unicode::UCD;
+use Pod::Usage;
+
+my $CATEGORIES = Unicode::UCD::general_categories;
+my $CHAR_BLOCKS = Unicode::UCD::charblocks;
+
+sub _get_pager($options) {
+    return Pager->new($options->{pager})
+        if $options->{pager};
+
+    return Pager->new($ENV{PAGER} // 'less -R')
+        if defined $options->{pager};
+}
+
+sub _get_src($options, $args) {
+    return CharSource::Dispatcher->new($options, $args);
+}
+
+sub _get_display_char($char, $info) {
+    return "\N{DOTTED CIRCLE}$char"
+        if $info->{category} eq 'Mn';
+    return "\N{OPEN BOX}"
+        if $info->{category} eq 'Zs';
+    return "\N{WHITE BULLET}"
+        if $char !~ /\p{IsGraph}/;
+    return $char;
+}
+
+sub print_char($char, $info, %o) {
+    my $padding = " " x $o{padding};
+
+    my $display = _get_display_char($char, $info);
+    if ($display eq $char) {
+        printf "${padding}\e[96m%s\e[0m", $display;
+    } else {
+        printf "${padding}\e[97m%s\e[0m", $display;
+    }
+}
+
+sub _identify_char_output($options, $char, $ci, %o) {
+    $o{padding} //= 0;
+
+    my $padding = " " x $o{padding};
+    my $char_offset = 6;
+    my $char_shift = $o{padding} + $char_offset;
+
+    if (!defined $ci) {
+        printf "${padding}\e[97m%-3s\e[0m ", "\N{OPEN BOX}";
+        print "${padding}\e[91mUnknown character\e[0m\n";
+        return;
+    }
+
+    print_char($char, $ci, %o);
+    printf "%sU+%s \e[92m%s\e[0m\n",
+        " " x ($char_offset - 1),
+        $ci->{code},
+        $ci->{name};
+    printf "${padding}%s\e[37m%s: %s\e[0m (\e[96m%s\e[36m:%s\e[0m)\n",
+        " " x $char_offset,
+        $ci->{script},
+        $ci->{block},
+        $ci->{category},
+        $CATEGORIES->{$ci->{category}};
+}
+
+sub _identify_char_csv($options, $char, $ci) {
+    if (!defined $ci) {
+        printf STDERR "%08x: Unknown character\n", ord $char;
+        return;
+    }
+
+    if ($char eq $options->{csv}) {
+        printf STDERR "Separator ignored\n";
+        return;
+    }
+
+    say join $options->{csv}, $char, $ci->@{qw(code name script block category)},
+            $CATEGORIES->{$ci->{category}};
+}
+
+sub identify_char($options, $char, %o) {
+    my $ord = ord $char;
+    my $ci = Unicode::UCD::charinfo($ord);
+
+    if (defined $options->{csv}) {
+        _identify_char_csv($options, $char, $ci);
+    } else {
+        _identify_char_output($options, $char, $ci);
+    }
+}
+
+sub identify_chars($options, $src) {
+    my $pager = _get_pager($options);
+
+    my $counter = 0;
+    while (defined(my $char = $src->next)) {
+        if ($counter++ && !exists $options->{csv}) {
+            printf "\n";
+        }
+
+        identify_char($options, $char);
+    }
+}
+
+sub utf8_sequences($options, $src) {
+    my $pager = _get_pager($options);
+
+    while (defined(my $char = $src->next)) {
+        if ($char =~ /\p{IsGraph}/) {
+            printf "\e[96m%s\e[0m\e[1G\e[4C", $char;
+        } else {
+            printf "\e[97m%-3s\e[0m ", "\N{OPEN BOX}";
+        }
+
+        my @bytes = unpack 'C*', Encode::encode($options->{encoding} // 'utf-8', $char);
+
+        my $counter = 0;
+        foreach my $byte (@bytes) {
+            if ($counter++) {
+                print " ";
+            }
+
+            printf "0x%02x", $byte;
+        }
+
+        print "\n";
+    }
+}
+
+sub _maximum_code_point() {
+    return max map { max($_->[0]->@[0, 1]) }
+        values $CHAR_BLOCKS->%*;
+}
+
+sub _categories_short($options, $args) {
+    my $pager = _get_pager($options);
+
+    my $count = 0;
+    my $max = _maximum_code_point;
+    my $on_line = 0;
+
+    for (my $ord = 0; $ord <= $max; ++$ord) {
+        my $ci = Unicode::UCD::charinfo($ord)
+            or next;
+
+        if (grep { $_ eq $ci->{category}
+                    || (length $_ == 1 && substr($ci->{category}, 0, 1) eq $_) }
+                $args->@*) {
+
+            printf "  U+%s \e[96m%s\e[0m", $ci->{code}, chr $ord;
+
+            ++$count;
+            if (++$on_line >= 8) {
+                printf "\n";
+                $on_line = 0;
+            }
+        }
+    }
+
+    print "\n";
+    print "\e[37m$count characters displayed\n";
+
+}
+
+sub categories($options, $args) {
+    my $pager = _get_pager($options);
+
+    foreach my $key (sort keys $CATEGORIES->%*) {
+        next if $args->@* > 0 && !grep { $_ eq $key } $args->@*;
+
+        if (length $key == 1) {
+            printf "\e[95m%-3s\e[0m \e[95m%s\e[0m\n", $key, $CATEGORIES->{$key};
+        } else {
+            printf "\e[94m%-3s\e[0m \e[37m%s\e[0m\n", $key, $CATEGORIES->{$key};
+        }
+    }
+}
+
+sub _charset_print($options, $name, $block, %o) {
+    $o{padding} //= 2;
+
+    print "\e[92m$name\e[0m\n";
+
+    if ($o{range} // 1) {
+        foreach my $rec ($block->@*) {
+            printf "%sU+%04X → U+%04X\n", " " x $o{padding}, $rec->@[0, 1];
+        }
+    }
+}
+
+sub _charset_list($methods, $options, $args) {
+    my $blocks = $methods->{list}->();
+
+    my $re = '(' . join('|', $args->@*) . ')';
+
+    foreach my $key (sort keys $blocks->%*) {
+        if ($options->{search} && $key !~ /$re/i) {
+            next;
+        }
+
+        print "\e[92m• \e[0m";
+        _charset_print($options, $key, $blocks->{$key});
+    }
+}
+
+sub _charset_long_ranges($options, $ranges) {
+    foreach my $range ($ranges->@*) {
+        printf "\e[92m  · U+%04X → U+%04X\e[0m\n", $range->@[0, 1];
+
+        foreach my $ord ($range->[0]..$range->[1]) {
+            identify_char($options, chr $ord, padding => 4);
+            print "\n";
+        }
+    }
+}
+
+sub _charset_table_ranges($options, $ranges) {
+    my $width = 3;
+    my $cols = 16;
+
+    foreach my $range ($ranges->@*) {
+        printf "\e[92m  • U+%04X → U+%04X\e[0m\n", $range->@[0, 1];
+
+        foreach my $ord ($range->[0]..$range->[1]) {
+            if (($ord - $range->[0]) % $cols == 0) {
+                printf "    \e[36mU+%04X\e[0m\e[37m│\e[0m", $ord;
+            }
+
+            my $ci = Unicode::UCD::charinfo($ord);
+
+            if (!defined $ci) {
+                printf "\e[91m%*s\e[0m", -$width, '×';
+            } else {
+                my $char = chr $ord;
+                my $display = _get_display_char($char, $ci);
+
+                if ($display eq $char) {
+                    printf " %*s", -$width, $display;
+                } else {
+                    printf " \e[97m%*s\e[0m", -$width, $display;
+                }
+            }
+
+            if (($ord - $range->[0]) % $cols == $cols - 1) {
+                print "\n";
+            } elsif (($ord - $range->[0]) % 8 == 7) {
+                print "\e[37m│\e[0m";
+            }
+        }
+
+        print "\n";
+    }
+}
+
+sub _charset_list_chars($methods, $options, $args) {
+    foreach my $arg ($args->@*) {
+        my $ranges = $methods->{get}->($arg);
+
+        if (!defined $ranges) {
+            print "\e[91m$arg: No such character set\e[0m\n";
+            next;
+        }
+
+        if ($args->@* > 1) {
+            print "\e[95m◦ $arg\e[0m\n";
+        }
+
+        if ($options->{table}) {
+            _charset_table_ranges($options, $ranges);
+        } else {
+            _charset_long_ranges($options, $ranges);
+        }
+    }
+}
+
+sub _charset_get($methods, $options, $args) {
+    foreach my $name ($args->@*) {
+        my $blocks = $methods->{get}->($name);
+
+        if (!defined $blocks) {
+            print "\e[91m$name: No such code\e[0m\n";
+        } else {
+            print "\e[92m• \e[0m";
+            _charset_print($options, $name, $blocks);
+        }
+    }
+}
+
+sub _charset($methods, $options, $arg) {
+    if (defined (my $name = $methods->{get}->(ord $arg))) {
+        my $block = $methods->{get}->($name);
+
+        print "\e[96m$arg\e[0m   ";
+        _charset_print($options, $name, $block, padding => 4, range => 0);
+    }
+}
+
+sub _charset_dispatcher($methods, $options, $args) {
+    if ((grep { $options->{$_} } qw(list_chars get list search)) > 1) {
+        say STDERR "Conflicting operations";
+        pod2usage;
+    }
+
+    my $pager = _get_pager($options);
+
+    return _charset_list_chars($methods, $options, $args)
+        if $options->{list_chars};
+
+    return _charset_get($methods, $options, $args)
+        if $options->{get};
+
+    return _charset_list($methods, $options, $args)
+        if $options->{list} || $options->{search} || $args->@* == 0;
+
+    my $src = _get_src($options, $args);
+    while (defined(my $c = $src->next)) {
+        _charset($methods, $options, $c);
+    }
+}
+
+sub charblock($options, $args) {
+    my $dispatcher = {
+        list => \&Unicode::UCD::charblocks,
+        get => \&Unicode::UCD::charblock,
+    };
+
+    _charset_dispatcher($dispatcher, $options, $args);
+}
+
+sub charscript($options, $args) {
+    my $dispatcher = {
+        list => \&Unicode::UCD::charscripts,
+        get => \&Unicode::UCD::charscript,
+    };
+
+    _charset_dispatcher($dispatcher, $options, $args);
+}
+
+sub Options::fix_pager($options, $cmd, @regices) {
+    return if defined $options->{pager} || $options->{no_pager};
+    return if !-t STDOUT;
+
+#   $options->{pager} = ''
+#       if !grep { $cmd =~ $_ } @regices;
+}
+
+sub Options::fix_csv($options) {
+    $options->{csv} = Encode::decode('utf-8', $options->{csv} || ';')
+        if exists $options->{csv};
+}
+
+my $options = {};
+
+binmode *STDOUT, ':encoding(utf-8)';
+
+# Get common options. Yes, we could be using some argparse equivalent,
+# but in core modules, we only have ‹Getopt::Long›. C'est la vie.
+GetOptions($options, qw(
+    h
+    help
+    pager|p:s
+    no_pager|no-pager|P
+)) or pod2usage;
+
+pod2usage(-exitval => 0, -verbose => 0)
+    if $options->{h} || @ARGV == 0;
+pod2usage(-exitval => 0, -verbose => 1)
+    if $options->{help};
+
+my $cmd = shift @ARGV;
+
+my $cmd_identify_regex = qr/^id(ent(ify)?)?$/;
+my $cmd_encode_regex = qr/^enc(ode)?$/;
+
+Options::fix_pager($options, $cmd, $cmd_identify_regex, $cmd_encode_regex);
+
+if ($cmd eq 'help') {
+    pod2usage(-exitval => 0, -verbose => 1);
+}
+
+if ($cmd =~ $cmd_identify_regex) {
+    GetOptions($options, qw(
+        argv|A
+        files|file|F
+        csv:s
+        whitespaces|ws|w
+    )) or pod2usage(-verbose => 1);
+
+    Options::fix_csv($options);
+
+    my $src = _get_src($options, \@ARGV);
+    identify_chars($options, $src);
+} elsif ($cmd =~ $cmd_encode_regex) {
+    GetOptions($options, qw(
+        argv|A
+        files|file|F
+        whitespaces|ws|w
+        encoding|as|E=s
+    )) or pod2usage(-verbose => 1);
+
+    my $src = _get_src($options, \@ARGV);
+    utf8_sequences($options, $src);
+} elsif ($cmd =~ /^cat(egor(y|ies))?$/) {
+    GetOptions($options)
+        or pod2usage(-verbose => 1);
+
+    categories($options, \@ARGV);
+} elsif ($cmd =~ /^(char)?blocks?$/) {
+    GetOptions($options, qw(
+        argv|A
+        files|file|F
+        whitespaces|ws|w
+
+        list_chars|list-chars|chars|x
+        table|t
+        get|g
+        list|l
+        search|s
+    )) or pod2usage(-verbose => 1);
+
+    Options::fix_csv($options);
+
+    charblock($options, \@ARGV);
+} elsif ($cmd =~ /^(char)?scripts?$/) {
+    charscript($options, \@ARGV);
+} else {
+    say STDERR "$cmd: Unknown command";
+    pod2usage(-verbose => 1);
+}
