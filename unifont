@@ -118,7 +118,6 @@ sub push_line($self, $line) {
 package ScriptTransformer;
 
 use Carp;
-use Try::Tiny;
 use Unicode::UCD;
 
 sub _SimpleBase($, $preset) {
@@ -155,12 +154,15 @@ sub build_from_options($class, %options) {
 
     my $module = join '::', 'ScriptTransformer', $preset;
 
-    try {
+    my $instance = eval {
         no strict 'refs';
         $module->new;
-    } catch {
-        die "There is no module to handle (@{[ sort keys %options ]})";
     };
+
+    die "There is no module to handle (@{[ sort keys %options ]})"
+        if $@;
+
+    return $instance;
 }
 
 sub new($class, $base = ord('A'), $lc_offset = undef) {
