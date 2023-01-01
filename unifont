@@ -312,7 +312,7 @@ sub build_from_options($class, %options) {
 }
 
 sub new($class, $base = ord('A'), $lc_offset = undef) {
-    $lc_offset //= @_ == 1
+    $lc_offset //= $base == ord('A')
         # If no arguments are provided, use offset 32 between uppercase
         # and lowercase characters.
         ? 32
