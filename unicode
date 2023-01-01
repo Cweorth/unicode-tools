@@ -573,15 +573,17 @@ sub _charset_table_ranges($options, $ranges) {
 			my $ci = Unicode::UCD::charinfo($ord);
 
 			if (!defined $ci) {
-				printf "\e[91m%*s\e[0m", -$width, '×';
+				printf " \e[91m%*s\e[0m", -$width, '×';
 			} else {
 				my $char = chr $ord;
 				my $display = _get_display_char($char, $ci);
 
+				my $display_width = -$width - length($display) + 1;
+
 				if ($display eq $char) {
-					printf " %*s", -$width, $display;
+					printf " %*s", $display_width, $display;
 				} else {
-					printf " \e[97m%*s\e[0m", -$width, $display;
+					printf " \e[97m%*s\e[0m", $display_width, $display;
 				}
 			}
 
