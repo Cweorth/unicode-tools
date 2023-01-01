@@ -262,8 +262,12 @@ sub new($class, $options, $argv) {
     return $self;
 }
 
+sub _is_file_arg($str) {
+    return $str =~ s/^@// || ($str =~ m!/! && -e $str);
+}
+
 sub _get_source($self, $arg) {
-    if ((!$self->{_opt}->{files} && !$self->{_opt}->{argv} && $arg =~ s/^@//)
+    if ((!$self->{_opt}->{files} && !$self->{_opt}->{argv} && _is_file_arg($arg))
             || $self->{_opt}->{files}) {
         return CharSource::File::Armour->new($self->{_opt}, $arg);
     }
@@ -592,8 +596,38 @@ sub _charset_table_ranges($options, $ranges) {
     }
 }
 
-sub _charset_list_chars($methods, $options, $args) {
+sub _charset_resolve_args($methods, $options, $args) {
+    my %blocks = map { lc $_ => $_ }
+        keys %{ $methods->{list}->() };
+
+    my %result;
     foreach my $arg ($args->@*) {
+        # Try exact match first.
+        if (exists $blocks{lc $arg}) {
+            $result{$blocks{lc $arg}} = undef;
+            next;
+        }
+
+        my $found = 0;
+        # Find the closest match if possible.
+        foreach my $key (sort keys %blocks) {
+            if ($key =~ /$arg/i) {
+                $result{$blocks{$key}} = undef;
+                $found++;
+            }
+        }
+
+        print STDERR "\e[91m$arg: No such character set\e[0m\n"
+            if $found == 0;
+    }
+
+    return sort keys %result;
+}
+
+sub _charset_list_chars($methods, $options, $args) {
+    my @charsets = _charset_resolve_args($methods, $options, $args);
+
+    foreach my $arg (@charsets) {
         my $ranges = $methods->{get}->($arg);
 
         if (!defined $ranges) {
@@ -614,7 +648,9 @@ sub _charset_list_chars($methods, $options, $args) {
 }
 
 sub _charset_get($methods, $options, $args) {
-    foreach my $name ($args->@*) {
+    my @charsets = _charset_resolve_args($methods, $options, $args);
+
+    foreach my $name (@charsets) {
         my $blocks = $methods->{get}->($name);
 
         if (!defined $blocks) {
@@ -743,7 +779,9 @@ if ($cmd =~ $cmd_identify_regex) {
         or pod2usage(-verbose => 1);
 
     categories($options, \@ARGV);
-} elsif ($cmd =~ /^(char)?blocks?$/) {
+} elsif ($cmd =~ /^(char)?(block|script)s?$/) {
+    my $type = $2;
+
     GetOptions($options, qw(
         argv|A
         files|file|F
@@ -758,9 +796,8 @@ if ($cmd =~ $cmd_identify_regex) {
 
     Options::fix_csv($options);
 
-    charblock($options, \@ARGV);
-} elsif ($cmd =~ /^(char)?scripts?$/) {
-    charscript($options, \@ARGV);
+    charblock($options, \@ARGV) if $type eq 'block';
+    charscript($options, \@ARGV) if $type eq 'script';
 } else {
     say STDERR "$cmd: Unknown command";
     pod2usage(-verbose => 1);
