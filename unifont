@@ -18,25 +18,25 @@ C<unifont> -- Unicode Font Scripts
 
 =head1 SYNOPSIS
 
-    unifont --help
-    unifont [SCRIPT-OPTIONS] [INPUT-OPTIONS] [INPUT…]
+	unifont --help
+	unifont [SCRIPT-OPTIONS] [INPUT-OPTIONS] [INPUT…]
 
 =head2 Brief summary of options
 
-    -h --help           Show help and exit.
+	-h --help           Show help and exit.
 
-  INPUT-OPTIONS:
-    -F --files          Interpret INPUT… as a list of files
-    -S --strict         Exit if input contains Latin characters that are not Basic Latin.
+	INPUT-OPTIONS:
+	-F --files          Interpret INPUT… as a list of files
+	-S --strict         Exit if input contains Latin characters that are not Basic Latin.
 
-  SCRIPT-OPTIONS:
-    -b --bold
-    -d --double-struck
-    -i --italic
-    -f --fractur
-    -m --mono-space
-    -s --sans-serif
-    -c --script
+	SCRIPT-OPTIONS:
+	-b --bold
+	-d --double-struck
+	-i --italic
+	-f --fractur
+	-m --mono-space
+	-s --sans-serif
+	-c --script
 
 =head1 DESCRIPTION
 
@@ -161,10 +161,10 @@ but the output may look ugly.
 package IOBaseHelper;
 
 sub new($class, %args) {
-    return bless {
-        map {; "_$_" => $args{$_} }
-            keys %args
-    }, $class;
+	return bless {
+		map {; "_$_" => $args{$_} }
+			keys %args
+	}, $class;
 }
 
 # -----------------------------------------------------------------------------
@@ -173,7 +173,7 @@ package Source;
 our @ISA = 'IOBaseHelper';
 
 sub next_line($self) {
-    ...;
+	...;
 }
 
 # -----------------------------------------------------------------------------
@@ -182,17 +182,17 @@ package Source::Array;
 our @ISA = 'Source';
 
 sub new($class, $array) {
-    return $class->SUPER::new(array => $array);
+	return $class->SUPER::new(array => $array);
 }
 
 sub next_line($self) {
-    if (!$self->{_array}->@*) {
-        return;
-    }
+	if (!$self->{_array}->@*) {
+		return;
+	}
 
-    my $ret = join ' ', $self->{_array}->@*;
-    $self->{_array} = [];
-    return $ret;
+	my $ret = join ' ', $self->{_array}->@*;
+	$self->{_array} = [];
+	return $ret;
 }
 
 # -----------------------------------------------------------------------------
@@ -201,17 +201,17 @@ package Source::File;
 our @ISA = 'Source';
 
 sub new($class, $handle = *STDIN) {
-    return $class->SUPER::new(handle => $handle);
+	return $class->SUPER::new(handle => $handle);
 }
 
 sub next_line($self) {
-    my $line = readline $self->{_handle};
+	my $line = readline $self->{_handle};
 
-    if (defined $line) {
-        chomp $line;
-    }
+	if (defined $line) {
+		chomp $line;
+	}
 
-    return $line;
+	return $line;
 }
 
 # -----------------------------------------------------------------------------
@@ -220,19 +220,19 @@ package Source::Join;
 our @ISA = 'Source';
 
 sub new($class, @sources) {
-    return $class->SUPER::new(sources => [ @sources ]);
+	return $class->SUPER::new(sources => [ @sources ]);
 }
 
 sub next_line($self) {
-    while ($self->{_sources}->@*) {
-        if (defined(my $line = $self->{_sources}->[0]->next_line)) {
-            return $line;
-        }
+	while ($self->{_sources}->@*) {
+		if (defined(my $line = $self->{_sources}->[0]->next_line)) {
+			return $line;
+		}
 
-        shift $self->{_sources}->@*;
-    }
+		shift $self->{_sources}->@*;
+	}
 
-    undef;
+	undef;
 }
 
 # -----------------------------------------------------------------------------
@@ -241,7 +241,7 @@ package Output;
 our @ISA = 'IOBaseHelper';
 
 sub push_line($self, $line) {
-    ...;
+	...;
 }
 
 # -----------------------------------------------------------------------------
@@ -250,11 +250,11 @@ package Output::File;
 our @ISA = 'Output';
 
 sub new($class, $handle = *STDOUT) {
-    return $class->SUPER::new(handle => $handle);
+	return $class->SUPER::new(handle => $handle);
 }
 
 sub push_line($self, $line) {
-    print { $self->{_handle} } $line, "\n";
+	print { $self->{_handle} } $line, "\n";
 }
 
 # =============================================================================
@@ -267,88 +267,88 @@ use Carp;
 use Unicode::UCD;
 
 sub _SimpleBase($, $preset) {
-    state $offsets = {
-        Bold => 0x1d400,
-        BoldItalic => 0x1d468,
-        SansSerif => 0x1d5a0,
-        BoldSansSerif => 0x1d5d4,
-        ItalicSansSerif => 0x1d608,
-        BoldItalicSansSerif => 0x1d63c,
-        BoldScript => 0x1d4ea,
-        BoldFraktur => 0x1d586,
-        MonoSpace => 0x1d68a,
-    };
+	state $offsets = {
+		Bold => 0x1d400,
+		BoldItalic => 0x1d468,
+		SansSerif => 0x1d5a0,
+		BoldSansSerif => 0x1d5d4,
+		ItalicSansSerif => 0x1d608,
+		BoldItalicSansSerif => 0x1d63c,
+		BoldScript => 0x1d4ea,
+		BoldFraktur => 0x1d586,
+		MonoSpace => 0x1d68a,
+	};
 
-    return $offsets->{$preset};
+	return $offsets->{$preset};
 }
 
 sub build_from_options($class, %options) {
-    my $preset = join '', map { ucfirst }
-        map { split /_/ }
-        sort keys %options;
+	my $preset = join '', map { ucfirst }
+		map { split /_/ }
+		sort keys %options;
 
-    if ($preset eq '') {
-        # Empty options, just return this instance that does
-        # nothing (base is set to 0).
-        return $class->new;
-    }
+	if ($preset eq '') {
+		# Empty options, just return this instance that does
+		# nothing (base is set to 0).
+		return $class->new;
+	}
 
-    if (defined(my $offset = $class->_SimpleBase($preset))) {
-        # This combination has no exceptions, simple base shift will do.
-        return $class->new($offset);
-    }
+	if (defined(my $offset = $class->_SimpleBase($preset))) {
+		# This combination has no exceptions, simple base shift will do.
+		return $class->new($offset);
+	}
 
-    my $module = join '::', 'ScriptTransformer', $preset;
+	my $module = join '::', 'ScriptTransformer', $preset;
 
-    my $instance = eval {
-        no strict 'refs';
-        $module->new;
-    };
+	my $instance = eval {
+		no strict 'refs';
+		$module->new;
+	};
 
-    die "There is no module to handle (@{[ sort keys %options ]})"
-        if $@;
+	die "There is no module to handle (@{[ sort keys %options ]})"
+		if $@;
 
-    return $instance;
+	return $instance;
 }
 
 sub new($class, $base = ord('A'), $lc_offset = undef) {
-    $lc_offset //= $base == ord('A')
-        # If no arguments are provided, use offset 32 between uppercase
-        # and lowercase characters.
-        ? 32
-        # Otherwise use offset 26 that separates uppercase and lowercase
-        # characters in special scripts.
-        : 26;
+	$lc_offset //= $base == ord('A')
+		# If no arguments are provided, use offset 32 between uppercase
+		# and lowercase characters.
+		? 32
+		# Otherwise use offset 26 that separates uppercase and lowercase
+		# characters in special scripts.
+		: 26;
 
-    return bless {
-        _base => $base,
-        _lc_offset => $lc_offset,
-    }, $class;
+	return bless {
+		_base => $base,
+		_lc_offset => $lc_offset,
+	}, $class;
 }
 
 sub convert($self, $char, $char_info = $self->Identify($char)) {
-    return lc $char_info->{block} ne 'basic latin'
-        ? $char
-        : $self->_convert($char);
+	return lc $char_info->{block} ne 'basic latin'
+		? $char
+		: $self->_convert($char);
 }
 
 sub _convert($self, $char) {
-    my ($offset, $base_char) = $self->base($char);
-    return chr($self->{_base} + $offset + ord($char) - ord($base_char));
+	my ($offset, $base_char) = $self->base($char);
+	return chr($self->{_base} + $offset + ord($char) - ord($base_char));
 }
 
 sub base($self, $char) {
-    my $lc = $char eq lc $char
-        ? $self->{_lc_offset} : 0;
+	my $lc = $char eq lc $char
+		? $self->{_lc_offset} : 0;
 
-    my $base = $lc
-        ? 'a' : 'A';
+	my $base = $lc
+		? 'a' : 'A';
 
-    return ($lc, $base);
+	return ($lc, $base);
 }
 
 sub Identify($, $char) {
-    return Unicode::UCD::charinfo(ord $char);
+	return Unicode::UCD::charinfo(ord $char);
 }
 
 # -----------------------------------------------------------------------------
@@ -357,16 +357,16 @@ package ScriptTransformer::Italic;
 our @ISA = 'ScriptTransformer';
 
 sub new($class) {
-    return $class->SUPER::new(0x1d434);
+	return $class->SUPER::new(0x1d434);
 }
 
 sub _convert($self, $char) {
-    # There is script for 'h' in Unicode.
-    if ($char eq 'h') {
-        return 'ℎ';
-    }
+	# There is script for 'h' in Unicode.
+	if ($char eq 'h') {
+		return 'ℎ';
+	}
 
-    return $self->SUPER::_convert($char);
+	return $self->SUPER::_convert($char);
 }
 
 # -----------------------------------------------------------------------------
@@ -375,16 +375,16 @@ package ScriptTransformer::Script;
 our @ISA = 'ScriptTransformer';
 
 sub new($class) {
-    return $class->SUPER::new(0x1d49c);
+	return $class->SUPER::new(0x1d49c);
 }
 
 sub _convert($self, $char) {
-    state $map = {
-        map {; substr($_, 0, 1) => substr($_, 1, 1) }
-            "BℬEℰFℱHℋIℐLℒMℳRℛeℯgℊoℴ" =~ /../g
-    };
+	state $map = {
+		map {; substr($_, 0, 1) => substr($_, 1, 1) }
+			"BℬEℰFℱHℋIℐLℒMℳRℛeℯgℊoℴ" =~ /../g
+	};
 
-    return $map->{$char} // $self->SUPER::_convert($char);
+	return $map->{$char} // $self->SUPER::_convert($char);
 }
 
 # -----------------------------------------------------------------------------
@@ -393,16 +393,16 @@ package ScriptTransformer::Fraktur;
 our @ISA = 'ScriptTransformer';
 
 sub new($class) {
-    return $class->SUPER::new(0x1d504);
+	return $class->SUPER::new(0x1d504);
 }
 
 sub _convert($self, $char) {
-    state $map = {
-        map {; substr($_, 0, 1) => substr($_, 1, 1) }
-            "CℭHℌIℑRℜZℨ" =~ /../g
-    };
+	state $map = {
+		map {; substr($_, 0, 1) => substr($_, 1, 1) }
+			"CℭHℌIℑRℜZℨ" =~ /../g
+	};
 
-    return $map->{$char} // $self->SUPER::_convert($char);
+	return $map->{$char} // $self->SUPER::_convert($char);
 }
 
 # -----------------------------------------------------------------------------
@@ -411,16 +411,16 @@ package ScriptTransformer::BoldDoubleStruck;
 our @ISA = 'ScriptTransformer';
 
 sub new($class) {
-    return $class->SUPER::new(0x1d538);
+	return $class->SUPER::new(0x1d538);
 }
 
 sub _convert($self, $char) {
-    state $map = {
-        map {; substr($_, 0, 1) => substr($_, 1, 1) }
-            "CℂHℍ NℕPℙ QℚRℝZℤ" =~ /../g
-    };
+	state $map = {
+		map {; substr($_, 0, 1) => substr($_, 1, 1) }
+			"CℂHℍ NℕPℙ QℚRℝZℤ" =~ /../g
+	};
 
-    return $map->{$char} // $self->SUPER::_convert($char);
+	return $map->{$char} // $self->SUPER::_convert($char);
 }
 
 # =============================================================================
@@ -433,83 +433,83 @@ use Getopt::Long qw(:config bundling);
 use Pod::Usage;
 
 sub transform_char($options, $t, $char) {
-    my $info = $t->Identify($char);
+	my $info = $t->Identify($char);
 
-    # Category ‹L*› is a letter. Do not convert other stuff.
-    if ($info->{category} !~ /^L/) {
-        return $char;
-    }
+	# Category ‹L*› is a letter. Do not convert other stuff.
+	if ($info->{category} !~ /^L/) {
+		return $char;
+	}
 
-    # If ‹--strict› is given and the letter is not Basic Latin,
-    # complain about invalid input.
-    if (lc $info->{block} ne 'basic latin') {
-        if ($options->{strict}) {
-            my $line = $. // 'from ARGV';
-            die "Character '$char' on input line $line is from block '$info->{block}'"
-                . " and cannot be converted!";
-        }
+	# If ‹--strict› is given and the letter is not Basic Latin,
+	# complain about invalid input.
+	if (lc $info->{block} ne 'basic latin') {
+		if ($options->{strict}) {
+			my $line = $. // 'from ARGV';
+			die "Character '$char' on input line $line is from block '$info->{block}'"
+				. " and cannot be converted!";
+		}
 
-        return $char;
-    }
+		return $char;
+	}
 
-    return $t->convert($char, $info);
+	return $t->convert($char, $info);
 }
 
 sub transform($options, $t, $line) {
-    return join '', map { transform_char($options, $t, $_) }
-        split '', $line;
+	return join '', map { transform_char($options, $t, $_) }
+		split '', $line;
 }
 
 sub process($options, $source, $sink) {
-    my %keys = map {; $_ => 1 }
-        grep { $options->{$_} }
-        (qw(bold double_struck fraktur italic mono_space sans_serif script));
+	my %keys = map {; $_ => 1 }
+		grep { $options->{$_} }
+		(qw(bold double_struck fraktur italic mono_space sans_serif script));
 
-    my $t = ScriptTransformer->build_from_options(%keys);
+	my $t = ScriptTransformer->build_from_options(%keys);
 
-    while (defined(my $line = $source->next_line)) {
-        $sink->push_line(transform($options, $t, $line));
-    }
+	while (defined(my $line = $source->next_line)) {
+		$sink->push_line(transform($options, $t, $line));
+	}
 }
 
 my $options = {};
 
 GetOptions($options, qw(
-    h
-    help
-    files|F
-    strict|S
+	h
+	help
+	files|F
+	strict|S
 
-    bold|b
-    double_struck|double-struck|d
-    italic|i
-    fraktur|f
-    mono_space|mono-space|m
-    sans_serif|sans-serif|s
-    script|c
+	bold|b
+	double_struck|double-struck|d
+	italic|i
+	fraktur|f
+	mono_space|mono-space|m
+	sans_serif|sans-serif|s
+	script|c
 )) or pod2usage(-verbose => 1);
 
 pod2usage(-verbose => 0, -exitval => 0)
-    if $options->{h};
+	if $options->{h};
 pod2usage(-verbose => 2, -exitval => 0)
-    if $options->{help};
+	if $options->{help};
 
 my $source;
 if (@ARGV && !$options->{files}) {
-    $source = Source::Array->new([
-        map { Encode::decode('utf-8', $_) }
-            @ARGV
-    ]);
+	$source = Source::Array->new([
+		map { Encode::decode('utf-8', $_) }
+			@ARGV
+	]);
 } elsif (@ARGV) {
-    $source = Source::Join->new(
-        map {
-            open my $fh, '<:encoding(utf-8)', $_
-                or die "$_: $!";
-            Source::File->new($fh);
-        } @ARGV
-    );
+	$source = Source::Join->new(
+		map {
+			open my $fh, '<:encoding(utf-8)', $_
+				or die "$_: $!";
+			Source::File->new($fh);
+		} @ARGV
+	);
 } else {
-    $source = Source::File->new(*STDIN);
+	$source = Source::File->new(*STDIN);
 }
 
 my $sink = Output::File->new(*STDOUT);
