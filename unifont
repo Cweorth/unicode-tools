@@ -10,6 +10,150 @@ use experimental 'signatures';
 
 use open ':std' => ':encoding(utf-8)';
 
+=encoding utf-8
+
+=head1 NAME
+
+C<unifont> -- Unicode Font Scripts
+
+=head1 SYNOPSIS
+
+    unifont --help
+    unifont [SCRIPT-OPTIONS] [INPUT-OPTIONS] [INPUT…]
+
+=head2 Brief summary of options
+
+    -h --help           Show help and exit.
+
+  INPUT-OPTIONS:
+    -F --files          Interpret INPUT… as a list of files
+    -S --strict         Exit if input contains Latin characters that are not Basic Latin.
+
+  SCRIPT-OPTIONS:
+    -b --bold
+    -d --double-struck
+    -i --italic
+    -f --fractur
+    -m --mono-space
+    -s --sans-serif
+    -c --script
+
+=head1 DESCRIPTION
+
+The program converts I<Basic Latin> characters into other scripts specified
+by C<SCRIPT-OPTIONS>.
+
+=head2 Input
+
+The input is selected as follows:
+
+=over
+
+=item
+
+If run without C<INPUT…> arguments, the script reads from standard input.
+
+=item
+
+If run with C<--files>, each C<INPUT…> argument is opened as a text file
+and used as an input.
+
+=item
+
+Finally, if run without C<--files> option, each argument is converted
+directly.
+
+=back
+
+=head2 Available scripts
+
+The script allows the following combinations of C<SCRIPT-OPTIONS>:
+
+=over
+
+=item I<(empty)>
+
+The script will perform no script transformation.
+
+=item C<--bold>
+
+=item C<--bold> C<--double-struck>
+
+=item C<--bold> C<--fraktur>
+
+=item C<--bold> C<--italic>
+
+=item C<--bold> C<--sans-serif>
+
+=item C<--bold> C<--script>
+
+=item C<--fraktur>
+
+=item C<--italic>
+
+=item C<--italic> C<--sans-serif>
+
+=item C<--mono-space>
+
+=item C<--sans-serif>
+
+=item C<--script>
+
+=back
+
+=head1 OPTIONS AND ARGUMENTS
+
+=head2 Generic options
+
+=over
+
+=item C<-h>, C<--help>, C<--man>
+
+Show short or long help respectively, and exit.
+
+=back
+
+=head2 Input options
+
+=over
+
+=item C<-F>, C<--files>
+
+Do not convert C<INPUT…> strings, but open each of them as a file
+and convert contents of these files.
+
+=item C<-S>, C<--strict>
+
+Die with errors if the input contains a character from C<Latin> block
+that is not from the C<Basic Latin> script (e.g. characters with diacritics).
+
+If not provided, the script will simply skip conversion of these characters,
+but the output may look ugly.
+
+=back
+
+=head2 Script options
+
+=over
+
+=item C<-b>, C<--bold>
+
+=item C<-d>, C<--double-struck>
+
+=item C<-i>, C<--italic>
+
+=item C<-f>, C<--fractur>
+
+=item C<-m>, C<--mono-space>
+
+=item C<-s>, C<--sans-serif>
+
+=item C<-c>, C<--script>
+
+=back
+
+=cut
+
 # =============================================================================
 # IO helpers
 # =============================================================================
@@ -374,148 +518,3 @@ if (@ARGV && !$options->{files}) {
 my $sink = Output::File->new(*STDOUT);
 
 process($options, $source, $sink);
-
-
-
-
-=encoding utf-8
-
-=head1 NAME
-
-C<unifont> -- Unicode Font Scripts
-
-=head1 SYNOPSIS
-
-    unifont --help
-    unifont [SCRIPT-OPTIONS] [INPUT-OPTIONS] [INPUT…]
-
-=head2 Brief summary of options
-
-    -h --help           Show help and exit.
-
-  INPUT-OPTIONS:
-    -F --files          Interpret INPUT… as a list of files
-    -S --strict         Exit if input contains Latin characters that are not Basic Latin.
-
-  SCRIPT-OPTIONS:
-    -b --bold
-    -d --double-struck
-    -i --italic
-    -f --fractur
-    -m --mono-space
-    -s --sans-serif
-    -c --script
-
-=head1 DESCRIPTION
-
-The program converts I<Basic Latin> characters into other scripts specified
-by C<SCRIPT-OPTIONS>.
-
-=head2 Input
-
-The input is selected as follows:
-
-=over
-
-=item
-
-If run without C<INPUT…> arguments, the script reads from standard input.
-
-=item
-
-If run with C<--files>, each C<INPUT…> argument is opened as a text file
-and used as an input.
-
-=item
-
-Finally, if run without C<--files> option, each argument is converted
-directly.
-
-=back
-
-=head2 Available scripts
-
-The script allows the following combinations of C<SCRIPT-OPTIONS>:
-
-=over
-
-=item I<(empty)>
-
-The script will perform no script transformation.
-
-=item C<--bold>
-
-=item C<--bold> C<--double-struck>
-
-=item C<--bold> C<--fraktur>
-
-=item C<--bold> C<--italic>
-
-=item C<--bold> C<--sans-serif>
-
-=item C<--bold> C<--script>
-
-=item C<--fraktur>
-
-=item C<--italic>
-
-=item C<--italic> C<--sans-serif>
-
-=item C<--mono-space>
-
-=item C<--sans-serif>
-
-=item C<--script>
-
-=back
-
-=head1 OPTIONS AND ARGUMENTS
-
-=head2 Generic options
-
-=over
-
-=item C<-h>, C<--help>, C<--man>
-
-Show short or long help respectively, and exit.
-
-=back
-
-=head2 Input options
-
-=over
-
-=item C<-F>, C<--files>
-
-Do not convert C<INPUT…> strings, but open each of them as a file
-and convert contents of these files.
-
-=item C<-S>, C<--strict>
-
-Die with errors if the input contains a character from C<Latin> block
-that is not from the C<Basic Latin> script (e.g. characters with diacritics).
-
-If not provided, the script will simply skip conversion of these characters,
-but the output may look ugly.
-
-=back
-
-=head2 Script options
-
-=over
-
-=item C<-b>, C<--bold>
-
-=item C<-d>, C<--double-struck>
-
-=item C<-i>, C<--italic>
-
-=item C<-f>, C<--fractur>
-
-=item C<-m>, C<--mono-space>
-
-=item C<-s>, C<--sans-serif>
-
-=item C<-c>, C<--script>
-
-=back
