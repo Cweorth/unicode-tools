@@ -107,7 +107,7 @@ The script will perform no script transformation.
 
 =over
 
-=item C<-h>, C<--help>, C<--man>
+=item C<-h>, C<--help>
 
 Show short or long help respectively, and exit.
 
@@ -476,7 +476,7 @@ my $options = {};
 
 GetOptions($options, qw(
     h
-    help|man
+    help
     files|F
     strict|S
 
@@ -489,13 +489,10 @@ GetOptions($options, qw(
     script|c
 )) or pod2usage(-verbose => 1);
 
-if ($options->{h}) {
-    pod2usage(-verbose => 0, -exitval => 0);
-}
-
-if ($options->{help}) {
-    pod2usage(-verbose => 2, -exitval => 0);
-}
+pod2usage(-verbose => 0, -exitval => 0)
+    if $options->{h};
+pod2usage(-verbose => 2, -exitval => 0)
+    if $options->{help};
 
 my $source;
 if (@ARGV && !$options->{files}) {
