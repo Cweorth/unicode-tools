@@ -8,6 +8,8 @@ use warnings;
 
 use experimental 'signatures';
 
+use open ':std' => ':encoding(utf-8)';
+
 # =============================================================================
 # IO helpers
 # =============================================================================
@@ -342,10 +344,6 @@ GetOptions($options, qw(
     sans_serif|sans-serif|s
     script|c
 )) or pod2usage(-verbose => 1);
-
-foreach my $handle (*STDIN, *STDOUT, *STDERR) {
-    binmode $handle, ':encoding(utf-8)';
-}
 
 if ($options->{h}) {
     pod2usage(-verbose => 0, -exitval => 0);

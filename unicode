@@ -7,6 +7,8 @@ use warnings;
 
 use experimental qw(signatures);
 
+use open ':std' => ':encoding(utf-8)';
+
 =encoding utf-8
 
 =head1 NAME
@@ -688,8 +690,6 @@ sub Options::fix_csv($options) {
 }
 
 my $options = {};
-
-binmode *STDOUT, ':encoding(utf-8)';
 
 # Get common options. Yes, we could be using some argparse equivalent,
 # but in core modules, we only have ‹Getopt::Long›. C'est la vie.
