@@ -1,0 +1,155 @@
+#!/usr/bin/env perl
+
+use v5.34;
+
+use utf8;
+use warnings;
+use experimental 'signatures';
+
+use open ':std' => ':encoding(utf-8)';
+
+use Encode;
+use charnames qw(:loose :short);
+
+=encoding utf-8
+
+=head1 NAME
+
+C<u8str> - replace Unicode character names with characters in an UTF-8 string
+
+=head1 SYNOPSIS
+
+	# Prints alpha: α beta: β
+	u8str "alpha: {{GREEK SMALL LETTER ALPHA}} beta: {{greek:beta}}"
+
+	# Prints contents of the file after replacements
+	u8str /path/to/file
+
+=head1 DESCRIPTION
+
+The script replaces Unicode character names in provided arguments or file
+with their respective Unicode characters and prints the result.
+
+Character replacement occurs only for strings enclosed in special marks:
+
+	{{NAME}}
+	«NAME»
+
+Alternatively one may use C<U8_DELIM> environment variable to set their own
+delimiters.
+
+In replacement, the following formats for C<NAME> to be replaced are supported:
+
+=over
+
+=item Full format
+
+Standard Unicode name of a character, e.g. C<DEVANAGARI LETTER A>.
+
+=item Short format
+
+If the character to display is a letter, then C<SCRIPT:CNAME> format
+can be used.
+
+This looks for letter with names of the form
+
+	$SCRIPT (CAPITAL|SMALL)? LETTER $CNAME
+
+If C<CNAME> is all lowercase, then C<CAPITAL> is not searched; otherwise
+C<SMALL> is not searched. For example,
+
+	cyrillic:io         → ё  # CYRILLIC SMALL LETER IO
+	cyrillic:Io         → Ё  # CYRILLIC CAPITAL LETTER IO
+	devanagari:a        → अ  # DEVANAGARI LETTER A
+	devanagari:A        → अ  # DEVANAGARI LETTER A
+
+=item Loose format
+
+See documentation for L<charnames/LOOSE MATCHES>.
+
+=back
+
+=head1 ARGUMENTS
+
+=over
+
+=item
+
+When no arguments are provided, the program reads the standard input.
+
+=item
+
+When exactly one argument is provided and a file with the same name exists,
+the file will be read and the contents after replacement will be displayed.
+
+=item
+
+Otherwise, arguments to the program will be joined by a single space character
+and displayed. Thus, the following invocations will produce the same result:
+
+	u8str "{{greek:alpha}} {{greek:beta}}"
+	u8str {{greek:alpha}} {{greek:beta}}
+
+=back
+
+=head1 ENVIRONMENT VARIABLES
+
+=over
+
+=item C<U8_DELIM>
+
+Set custom delimiters for replacement. The contents of the string is the left
+delimiter immediately followed by the right delimiter, both must be of the same
+length. The string must thus have non-zero even size.
+
+	# Prints Gamma: γ
+	U8_DELIM="<||>" u8str "Gamma: <|greek:gamma|>"
+
+=back
+
+=head1 SEE ALSO
+
+=over
+
+=item
+
+L<charnames>
+
+=back
+
+=cut
+
+@::D = (
+	['{{', '}}'],
+	['«', '»'],
+);
+
+sub replace($str) {
+	foreach (@::D) {
+		$str =~ s{\Q$_->[0]\E([^\Q$_->[1]\E]+)\Q$_->[1]\E}
+				 {charnames::string_vianame($1)
+						or do { warn "$1: Unknown code point\n"; "" }}gex
+	}
+
+	return $str;
+}
+
+if (my $delim = $ENV{U8_DELIM}) {
+	my $len = length $delim;
+
+	die "U8_DELIM must have non-zero even length\n"
+		if $len == 0 || $len % 2 != 0;
+
+	@::D = (
+		[substr($delim, 0, $len / 2), substr($delim, $len / 2)],
+	);
+}
+
+if (@ARGV == 0 || (@ARGV == 1 && -e $ARGV[0])) {
+	while (my $line = <>) {
+		chomp $line;
+		say replace(Encode::decode('utf-8', $line));
+	}
+} else {
+	say replace(join ' ', map { Encode::decode('utf-8', $_) } @ARGV);
+}
