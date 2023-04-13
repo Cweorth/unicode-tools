@@ -235,8 +235,7 @@ sub new($class, %options) {
 }
 
 sub accept($self, $c, $uninfo) {
-	fc $uninfo->{block} eq 'basic latin'
-		&& $uninfo->{category} =~ /^L/;
+	$c =~ /^[a-zA-Z]$/;
 }
 
 sub convert($, $, $) {
@@ -264,15 +263,24 @@ sub new($self, %options) {
 	return $self->SUPER::new(%options);
 }
 
-sub char_base($self, $c) {
+sub accept($self, $c, $uninfo) {
+	return $c =~ /^[A-Za-z0-9]$/ if $self->{digits};
+	return $self->SUPER::accept($c, $uninfo);
+}
+
+sub char_base($self, $c, $) {
+	if ($self->{digits} && $c =~ /^[0-9]$/) {
+		return ($self->{digits}, '0', 0);
+	}
+
 	my $lc = $c eq lc $c ? $self->{lc_shift} : 0;
 	my $base = $lc > 0 ? 'a' : 'A';
-	return ($lc, $base);
+	return ($self->{base}, $base, $lc);
 }
 
 sub convert($self, $c, $uninfo) {
-	my ($offset, $base) = $self->char_base($c);
-	return chr($self->{base} + $offset + ord($c) - ord($base));
+	my ($block, $base, $lc_offset) = $self->char_base($c, $uninfo);
+	return chr($block + $lc_offset + ord($c) - ord($base));
 }
 
 
@@ -362,11 +370,11 @@ sub convert($self, $c, $uninfo) {
 }
 
 
-package Script::Convert::BoldDoubleStruck;
+package Script::Convert::DoubleStruck;
 use parent -norequire => 'ScriptConvert::Shift';
 
 sub new($class) {
-	return $class->SUPER::new(base => 0x1d538);
+	return $class->SUPER::new(base => 0x1d538, digits => 0x1d7d8);
 }
 
 sub convert($self, $c, $uninfo) {
@@ -383,15 +391,15 @@ package ScriptConvert::Shift;
 
 BEGIN {
 	my %SHIFTED = (
-		Bold => { base => 0x1d400, option => 'b' },
+		Bold => { base => 0x1d400, digits => 0x1d7ce, option => 'b' },
 		BoldFraktur => 0x1d56c,
 		BoldItalic => 0x1d468,
 		BoldItalicSansSerif => 0x1d63c,
-		BoldSansSerif => 0x1d5d4,
+		BoldSansSerif => { base => 0x1d5d4, digits => 0x1d7ec },
 		BoldScript => 0x1d4d0,
 		ItalicSansSerif => 0x1d608,
-		MonoSpace => { base => 0x1d68a, option => 'm' },
-		SansSerif => { base => 0x1d5a0, option => 's' },
+		MonoSpace => { base => 0x1d68a, digits => 0x1d7f6, option => 'm' },
+		SansSerif => { base => 0x1d5a0, digits => 0x1d7e2, option => 's' },
 	);
 
 	foreach my ($name, $value) (%SHIFTED) {
@@ -431,7 +439,7 @@ sub transform_char($options, $t, $char) {
 
 	# If ‹--strict› is given and the letter is not Basic Latin, complain
 	# about invalid input.
-	if (!$t->accept($t, $info)) {
+	if (!$t->accept($char, $info)) {
 		if ($options->{strict}) {
 			my $line = $. // 'from ARGV';
 			die "Character '$char' on input line $line is from block '$info->{block}'"
