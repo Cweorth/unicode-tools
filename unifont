@@ -469,12 +469,18 @@ sub transform($options, $t, $line) {
 		split '', $line;
 }
 
-sub get_transformer($settings) {
+sub get_transformer($settings, $split = builtin::false) {
+	my sub deslug($string) {
+		join '', map { ucfirst } split /-/, $string
+	}
+
 	return Script::Convert::Identity->new
 		if $settings->@* == 0;
 
-	$settings = [ map { split /-/ } $settings->@* ];
-	my $ns = join '', map { ucfirst } sort $settings->@*;
+	$settings = [ map { split /-/ } $settings->@* ]
+		if $split;
+
+	my $ns = join '', map { deslug($_) } sort $settings->@*;
 
 	no strict 'refs';
 	foreach my $name (%{"Script::Convert::"}) {
@@ -483,6 +489,9 @@ sub get_transformer($settings) {
 			return $pkg->new;
 		}
 	}
+
+	return get_transformer($settings, builtin::true)
+		unless $split;
 
 	die "No module to handle [$settings->@*] (Script::Convert::$ns)";
 }
