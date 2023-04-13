@@ -1,13 +1,9 @@
 #!/usr/bin/perl
 
-use v5.34;
+use v5.36;
+use experimental qw{builtin for_list};
 
 use utf8;
-use strict;
-use warnings;
-
-use experimental 'signatures';
-
 use open ':std' => ':encoding(utf-8)';
 
 =encoding utf-8
@@ -15,6 +11,7 @@ use open ':std' => ':encoding(utf-8)';
 =head1 NAME
 
 C<unifont> -- Unicode Font Scripts
+
 
 =head1 SYNOPSIS
 
@@ -26,17 +23,14 @@ C<unifont> -- Unicode Font Scripts
 	-h --help           Show help and exit.
 
 	INPUT-OPTIONS:
+	-L --list           List available SCRIPT-OPTIONS
 	-F --files          Interpret INPUT… as a list of files
-	-S --strict         Exit if input contains Latin characters that are not Basic Latin.
+	-S --strict         Exit if input contains characters that are not Basic Latin.
 
 	SCRIPT-OPTIONS:
-	-b --bold
-	-d --double-struck
-	-i --italic
-	-f --fractur
-	-m --mono-space
-	-s --sans-serif
-	-c --script
+	See the output of --list for the complete list.
+	-b --bold           Bold font
+	-i --italic         Italic font
 
 =head1 DESCRIPTION
 
@@ -65,41 +59,6 @@ directly.
 
 =back
 
-=head2 Available scripts
-
-The script allows the following combinations of C<SCRIPT-OPTIONS>:
-
-=over
-
-=item I<(empty)>
-
-The script will perform no script transformation.
-
-=item C<--bold>
-
-=item C<--bold> C<--double-struck>
-
-=item C<--bold> C<--fraktur>
-
-=item C<--bold> C<--italic>
-
-=item C<--bold> C<--sans-serif>
-
-=item C<--bold> C<--script>
-
-=item C<--fraktur>
-
-=item C<--italic>
-
-=item C<--italic> C<--sans-serif>
-
-=item C<--mono-space>
-
-=item C<--sans-serif>
-
-=item C<--script>
-
-=back
 
 =head1 OPTIONS AND ARGUMENTS
 
@@ -116,6 +75,10 @@ Show short or long help respectively, and exit.
 =head2 Input options
 
 =over
+
+=item C<-L>, C<--list>
+
+List available conversions.
 
 =item C<-F>, C<--files>
 
@@ -134,25 +97,16 @@ but the output may look ugly.
 
 =head2 Script options
 
-=over
+These can be found by running the script with the C<--list> option.
 
-=item C<-b>, C<--bold>
+Some scripts can be combined; if convertors for C<--X> and C<--Y> exist
+and a convertor for C<--X-Y> exists as well, then either of these two ways
+can specify the convertor.
 
-=item C<-d>, C<--double-struck>
-
-=item C<-i>, C<--italic>
-
-=item C<-f>, C<--fractur>
-
-=item C<-m>, C<--mono-space>
-
-=item C<-s>, C<--sans-serif>
-
-=item C<-c>, C<--script>
-
-=back
+For example, C<--bold> and C<--italic> have the same effect as C<--bold-italic>.
 
 =cut
+
 
 # =============================================================================
 # IO helpers
@@ -167,7 +121,6 @@ sub new($class, %args) {
 	}, $class;
 }
 
-# -----------------------------------------------------------------------------
 
 package Source;
 our @ISA = 'IOBaseHelper';
@@ -176,7 +129,6 @@ sub next_line($self) {
 	...;
 }
 
-# -----------------------------------------------------------------------------
 
 package Source::Array;
 our @ISA = 'Source';
@@ -195,7 +147,6 @@ sub next_line($self) {
 	return $ret;
 }
 
-# -----------------------------------------------------------------------------
 
 package Source::File;
 our @ISA = 'Source';
@@ -214,7 +165,6 @@ sub next_line($self) {
 	return $line;
 }
 
-# -----------------------------------------------------------------------------
 
 package Source::Join;
 our @ISA = 'Source';
@@ -234,6 +184,7 @@ sub next_line($self) {
 
 	undef;
 }
+
 
 # -----------------------------------------------------------------------------
 
@@ -257,171 +208,213 @@ sub push_line($self, $line) {
 	print { $self->{_handle} } $line, "\n";
 }
 
+
 # =============================================================================
 # Script Transformation
 # =============================================================================
 
-package ScriptTransformer;
+package ScriptConvert::Base;
 
-use Carp;
 use Unicode::UCD;
 
-sub _SimpleBase($, $preset) {
-	state $offsets = {
-		Bold => 0x1d400,
-		BoldItalic => 0x1d468,
-		SansSerif => 0x1d5a0,
-		BoldSansSerif => 0x1d5d4,
-		ItalicSansSerif => 0x1d608,
-		BoldItalicSansSerif => 0x1d63c,
-		BoldScript => 0x1d4ea,
-		BoldFraktur => 0x1d586,
-		MonoSpace => 0x1d68a,
-	};
-
-	return $offsets->{$preset};
+sub Identify($, $c) {
+	return Unicode::UCD::charinfo(ord $c);
 }
 
-sub build_from_options($class, %options) {
-	my $preset = join '', map { ucfirst }
-		map { split /_/ }
-		sort keys %options;
-
-	if ($preset eq '') {
-		# Empty options, just return this instance that does
-		# nothing (base is set to 0).
-		return $class->new;
-	}
-
-	if (defined(my $offset = $class->_SimpleBase($preset))) {
-		# This combination has no exceptions, simple base shift will do.
-		return $class->new($offset);
-	}
-
-	my $module = join '::', 'ScriptTransformer', $preset;
-
-	my $instance = eval {
-		no strict 'refs';
-		$module->new;
-	};
-
-	die "There is no module to handle (@{[ sort keys %options ]})"
-		if $@;
-
-	return $instance;
+sub ShortOption($) {
+	return undef;
 }
 
-sub new($class, $base = ord('A'), $lc_offset = undef) {
-	$lc_offset //= $base == ord('A')
-		# If no arguments are provided, use offset 32 between uppercase
-		# and lowercase characters.
-		? 32
-		# Otherwise use offset 26 that separates uppercase and lowercase
-		# characters in special scripts.
-		: 26;
-
-	return bless {
-		_base => $base,
-		_lc_offset => $lc_offset,
-	}, $class;
+sub LongOption($ref) {
+	my $name = (split '::', builtin::blessed($ref) // $ref)[-1];
+	return join '-', map { lc } ($name =~ /[A-Z][a-z]*/g);
 }
 
-sub convert($self, $char, $char_info = $self->Identify($char)) {
-	return lc $char_info->{block} ne 'basic latin'
-		? $char
-		: $self->_convert($char);
+sub new($class, %options) {
+	return bless { %options }, $class;
 }
 
-sub _convert($self, $char) {
-	my ($offset, $base_char) = $self->base($char);
-	return chr($self->{_base} + $offset + ord($char) - ord($base_char));
+sub accept($self, $c, $uninfo) {
+	fc $uninfo->{block} eq 'basic latin'
+		&& $uninfo->{category} =~ /^L/;
 }
 
-sub base($self, $char) {
-	my $lc = $char eq lc $char
-		? $self->{_lc_offset} : 0;
+sub convert($, $, $) {
+	...
+}
 
-	my $base = $lc
-		? 'a' : 'A';
+sub map($self, $c, $uninfo = $self->Identify($c)) {
+	return $c unless $self->accept($c, $uninfo);
+	return $self->convert($c, $uninfo);
+}
 
+
+# -----------------------------------------------------------------------------
+
+package ScriptConvert::Shift;
+use parent -norequire => 'ScriptConvert::Base';
+
+use Carp;
+
+sub new($self, %options) {
+	Carp::confess('Option "$options{base}" missing!')
+		unless defined $options{base};
+
+	$options{lc_shift} //= 26;
+	return $self->SUPER::new(%options);
+}
+
+sub char_base($self, $c) {
+	my $lc = $c eq lc $c ? $self->{lc_shift} : 0;
+	my $base = $lc > 0 ? 'a' : 'A';
 	return ($lc, $base);
 }
 
-sub Identify($, $char) {
-	return Unicode::UCD::charinfo(ord $char);
+sub convert($self, $c, $uninfo) {
+	my ($offset, $base) = $self->char_base($c);
+	return chr($self->{base} + $offset + ord($c) - ord($base));
 }
+
 
 # -----------------------------------------------------------------------------
 
-package ScriptTransformer::Italic;
-our @ISA = 'ScriptTransformer';
+package Script::Convert::Identity;
+use parent -norequire => 'ScriptConvert::Base';
+
+sub LongOption($) { 'id' }
+
+sub convert($, $c, $=) {
+	$c;
+}
+
+
+package Script::Convert::Lc;
+use parent -norequire => 'ScriptConvert::Base';
+
+sub accept($, $, $=) { 1 }
+
+sub convert($, $c, $=) { lc $c }
+
+
+package Script::Convert::Uc;
+use parent -norequire => 'ScriptConvert::Base';
+
+sub accept($, $, $=) { 1 }
+
+sub convert($, $c, $=) { uc $c }
+
+
+package Script::Convert::Fc;
+use parent -norequire => 'ScriptConvert::Base';
+
+sub accept($, $, $=) { 1 }
+
+sub convert($, $c, $=) { fc $c }
+
+
+package Script::Convert::Italic;
+use parent -norequire => 'ScriptConvert::Shift';
+
+sub ShortOption($) { 'i' };
 
 sub new($class) {
-	return $class->SUPER::new(0x1d434);
+	return $class->SUPER::new(base => 0x1d434);
 }
 
-sub _convert($self, $char) {
-	# There is script for 'h' in Unicode.
-	if ($char eq 'h') {
-		return 'ℎ';
-	}
-
-	return $self->SUPER::_convert($char);
+sub convert($self, $c, $uninfo) {
+	# There is a special italic character for 'h' in other Unicode block.
+	return 'ℎ' if $c eq 'h';
+	return $self->SUPER::convert($c, $uninfo);
 }
 
-# -----------------------------------------------------------------------------
 
-package ScriptTransformer::Script;
-our @ISA = 'ScriptTransformer';
+package Script::Convert::Script;
+use parent -norequire => 'ScriptConvert::Shift';
 
 sub new($class) {
-	return $class->SUPER::new(0x1d49c);
+	return $class->SUPER::new(base => 0x1d49c);
 }
 
-sub _convert($self, $char) {
+sub convert($self, $c, $uninfo) {
 	state $map = {
 		map {; substr($_, 0, 1) => substr($_, 1, 1) }
 			"BℬEℰFℱHℋIℐLℒMℳRℛeℯgℊoℴ" =~ /../g
 	};
 
-	return $map->{$char} // $self->SUPER::_convert($char);
+	return $map->{$c} // $self->SUPER::convert($c, $uninfo);
 }
 
-# -----------------------------------------------------------------------------
 
-package ScriptTransformer::Fraktur;
-our @ISA = 'ScriptTransformer';
+package Script::Convert::Fraktur;
+use parent -norequire => 'ScriptConvert::Shift';
 
 sub new($class) {
-	return $class->SUPER::new(0x1d504);
+	return $class->SUPER::new(base => 0x1d504);
 }
 
-sub _convert($self, $char) {
+sub convert($self, $c, $uninfo) {
 	state $map = {
 		map {; substr($_, 0, 1) => substr($_, 1, 1) }
 			"CℭHℌIℑRℜZℨ" =~ /../g
 	};
 
-	return $map->{$char} // $self->SUPER::_convert($char);
+	return $map->{$c} // $self->SUPER::convert($c, $uninfo);
 }
 
-# -----------------------------------------------------------------------------
 
-package ScriptTransformer::BoldDoubleStruck;
-our @ISA = 'ScriptTransformer';
+package Script::Convert::BoldDoubleStruck;
+use parent -norequire => 'ScriptConvert::Shift';
 
 sub new($class) {
-	return $class->SUPER::new(0x1d538);
+	return $class->SUPER::new(base => 0x1d538);
 }
 
-sub _convert($self, $char) {
+sub convert($self, $c, $uninfo) {
 	state $map = {
 		map {; substr($_, 0, 1) => substr($_, 1, 1) }
-			"CℂHℍ NℕPℙ QℚRℝZℤ" =~ /../g
+			"CℂHℍNℕPℙQℚRℝZℤ" =~ /../g
 	};
 
-	return $map->{$char} // $self->SUPER::_convert($char);
+	return $map->{$c} // $self->SUPER::convert($c, $uninfo);
 }
+
+
+package ScriptConvert::Shift;
+
+BEGIN {
+	my %SHIFTED = (
+		Bold => { base => 0x1d400, option => 'b' },
+		BoldFraktur => 0x1d56c,
+		BoldItalic => 0x1d468,
+		BoldItalicSansSerif => 0x1d63c,
+		BoldSansSerif => 0x1d5d4,
+		BoldScript => 0x1d4d0,
+		ItalicSansSerif => 0x1d608,
+		MonoSpace => { base => 0x1d68a, option => 'm' },
+		SansSerif => { base => 0x1d5a0, option => 's' },
+	);
+
+	foreach my ($name, $value) (%SHIFTED) {
+		my $package = "Script::Convert::${name}";
+		my %args = ref $value ? $value->%* : (base => $value);
+
+		no strict 'refs';
+		my $pkg = "Script::Convert::${name}";
+
+		if (defined (my $option = $args{option})) {
+			*{"${pkg}::ShortOption"} = sub ($) { $option };
+		}
+
+		@{"${pkg}::ISA"} = qw{ScriptConvert::Shift};
+		*{"${pkg}::new"} = sub ($class, %options) {
+			# We cannot use ‹SUPER› here as it would look for
+			# ‹ScriptConvert::Shift›'s parent namespace (where we
+			# are now).
+			return ScriptConvert::Shift->new(%args, %options);
+		};
+	}
+}
+
 
 # =============================================================================
 # Main
@@ -429,30 +422,26 @@ sub _convert($self, $char) {
 
 package main;
 
-use Getopt::Long qw(:config bundling);
+use List::Util qw{max};
+use Getopt::Long qw{:config bundling};
 use Pod::Usage;
 
 sub transform_char($options, $t, $char) {
 	my $info = $t->Identify($char);
 
-	# Category ‹L*› is a letter. Do not convert other stuff.
-	if ($info->{category} !~ /^L/) {
-		return $char;
-	}
-
-	# If ‹--strict› is given and the letter is not Basic Latin,
-	# complain about invalid input.
-	if (lc $info->{block} ne 'basic latin') {
+	# If ‹--strict› is given and the letter is not Basic Latin, complain
+	# about invalid input.
+	if (!$t->accept($t, $info)) {
 		if ($options->{strict}) {
 			my $line = $. // 'from ARGV';
 			die "Character '$char' on input line $line is from block '$info->{block}'"
-				. " and cannot be converted!";
+				. " and cannot be converted by @{[ builtin::blessed $t ]}!";
 		}
 
 		return $char;
 	}
 
-	return $t->convert($char, $info);
+	return $t->map($char, $info);
 }
 
 sub transform($options, $t, $line) {
@@ -460,42 +449,83 @@ sub transform($options, $t, $line) {
 		split '', $line;
 }
 
-sub process($options, $source, $sink) {
-	my %keys = map {; $_ => 1 }
-		grep { $options->{$_} }
-		(qw(bold double_struck fraktur italic mono_space sans_serif script));
+sub get_transformer($settings) {
+	return Script::Convert::Identity->new
+		if $settings->@* == 0;
 
-	my $t = ScriptTransformer->build_from_options(%keys);
+	$settings = [ map { split /-/ } $settings->@* ];
+	my $ns = join '', map { ucfirst } sort $settings->@*;
+
+	no strict 'refs';
+	foreach my $name (%{"Script::Convert::"}) {
+		if ($name eq "${ns}::") {
+			my $pkg = "Script::Convert::$ns";
+			return $pkg->new;
+		}
+	}
+
+	die "No module to handle [$settings->@*] (Script::Convert::$ns)";
+}
+
+sub process($source, $sink, $settings) {
+	my $t = get_transformer($settings);
 
 	while (defined(my $line = $source->next_line)) {
-		$sink->push_line(transform($options, $t, $line));
+		$sink->push_line(transform($::OPTIONS, $t, $line));
 	}
 }
 
-my $options = {};
+sub list_converters() {
+	my sub _converter_info($ns, $pkg) {
+		no strict 'refs';
+		my $short_option = $pkg->ShortOption;
+		[ $pkg->LongOption, $pkg->ShortOption, $pkg ]
+	}
 
-GetOptions($options, qw(
+	map { _converter_info($_, "Script::Convert::$_") }
+		map { $_ =~ s/::$//r }
+		sort keys %Script::Convert::
+}
+
+sub converter_options() {
+	map { join '|', grep { defined } $_->@[0, 1] }
+		list_converters()
+}
+
+$::OPTIONS = {};
+
+GetOptions($::OPTIONS, qw{
 	h
 	help
 	files|F
 	strict|S
-
-	bold|b
-	double_struck|double-struck|d
-	italic|i
-	fraktur|f
-	mono_space|mono-space|m
-	sans_serif|sans-serif|s
-	script|c
-)) or pod2usage(-verbose => 1);
+	list|list-converters|L
+}, converter_options) or pod2usage(-verbose => 1);
 
 pod2usage(-verbose => 0, -exitval => 0)
-	if $options->{h};
+	if $::OPTIONS->{h};
 pod2usage(-verbose => 2, -exitval => 0)
-	if $options->{help};
+	if $::OPTIONS->{help};
 
-my $source;
-if (@ARGV && !$options->{files}) {
+if ($::OPTIONS->{list}) {
+	my $width = 2 + max 0, map { length $_->[0] }
+		grep { defined } list_converters;
+
+	foreach my $converter (list_converters) {
+		my $lopt = $converter->[2]->LongOption;
+		my $sopt = $converter->[2]->ShortOption;
+
+		printf "%-2s  %*s  %s\n",
+			defined $sopt ? "-$sopt" : "",
+			-$width, "--" . $lopt,
+			$converter->[2];
+	}
+
+	exit 0;
+}
+
+my ($source, $sink);
+if (@ARGV && !$::OPTIONS->{files}) {
 	$source = Source::Array->new([
 		map { Encode::decode('utf-8', $_) }
 			@ARGV
@@ -512,6 +542,10 @@ if (@ARGV && !$options->{files}) {
 	$source = Source::File->new(*STDIN);
 }
 
-my $sink = Output::File->new(*STDOUT);
+$sink = Output::File->new(*STDOUT);
 
-process($options, $source, $sink);
+my @converters = map { $_->[0] }
+	grep { $::OPTIONS->{$_->[0]} }
+	list_converters;
+
+process($source, $sink, \@converters);
