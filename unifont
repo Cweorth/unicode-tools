@@ -387,6 +387,18 @@ sub convert($self, $c, $uninfo) {
 }
 
 
+package Script::Convert::RegionalIndicator;
+use parent -norequire => 'ScriptConvert::Shift';
+
+sub new($class) {
+	return $class->SUPER::new(base => 0x1f1e6);
+}
+
+sub accept($self, $c, $) {
+	return $c =~ /^[A-Z]$/;
+}
+
+
 package ScriptConvert::Shift;
 
 BEGIN {
